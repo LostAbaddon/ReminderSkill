@@ -3,10 +3,14 @@
   "version": "1.0.2",
   "description": "具备跨平台系统通知能力的智能提醒和日历事件管理插件",
   "author": {
-    "name": "LostAbaddon"
+    "name": "LostAbaddon",
+    "email": "lostabaddon@gmail.com",
+    "url": "https://lostabaddon.github.io/"
   },
+  "repository": "https://github.com/LostAbaddon/ReminderSkill.git",
   "license": "MIT",
   "keywords": ["reminder", "calendar", "notification", "scheduler"],
+  "skills": "./skills/",
   "hooks": {
     "SessionStart": [
       {
