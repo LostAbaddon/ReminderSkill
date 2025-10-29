@@ -1,0 +1,12 @@
+{
+  "name": "reminder-skill-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for reminder and calendar event management",
+  "main": "reminder-server.js",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
