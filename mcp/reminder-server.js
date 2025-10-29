@@ -18,6 +18,9 @@ const path = require('path');
 const { spawn } = require('child_process');
 const os = require('os');
 
+// Development mode flag
+const IS_DEV = process.env.NODE_ENV === 'development';
+
 // Data directory for storing reminders
 const DATA_DIR = path.join(os.homedir(), '.reminder-skill-data');
 const REMINDERS_FILE = path.join(DATA_DIR, 'reminders.json');
@@ -29,9 +32,11 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 /**
- * Log messages to file for debugging
+ * Log messages to file for debugging (only in development mode)
  */
 function log(level, message, data = null) {
+  if (!IS_DEV) return;
+
   const timestamp = new Date().toISOString();
   const logMessage = data
     ? `[${timestamp}] [${level}] ${message} ${JSON.stringify(data)}\n`

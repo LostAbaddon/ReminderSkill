@@ -228,7 +228,7 @@ ls -la ~/.reminder-skill-data
 
 ## 许可证
 
-MIT
+[MIT](./LICENSE)
 
 ## 支持
 

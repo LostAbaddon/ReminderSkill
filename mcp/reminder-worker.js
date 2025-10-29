@@ -10,6 +10,9 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 const os = require('os');
 
+// Development mode flag
+const IS_DEV = process.env.NODE_ENV === 'development';
+
 // Platform detection
 const PLATFORM = os.platform();
 const IS_MACOS = PLATFORM === 'darwin';
@@ -25,9 +28,11 @@ const DELAY = parseInt(process.argv[6], 10);
 const LOG_FILE = process.argv[7];
 
 /**
- * Log messages to file for debugging
+ * Log messages to file for debugging (only in development mode)
  */
 function log(level, message, data = null) {
+  if (!IS_DEV) return;
+
   const timestamp = new Date().toISOString();
   const logMessage = data
     ? `[${timestamp}] [${level}] ${message} ${JSON.stringify(data)}\n`

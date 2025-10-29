@@ -31,7 +31,7 @@ Desktop.ini
 .claude
 
 # Test files (optional - remove if you want to commit test script)
-test-notification.js
+test-*.js
 
 # Log files
 reminder-server.log
