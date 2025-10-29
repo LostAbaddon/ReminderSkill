@@ -70,9 +70,25 @@ claude plugin install reminder-skill@my-marketplace
 cp -r . ~/.claude/plugins/reminder-skill
 ```
 
-### 步骤 3：重启 Claude Code
+### 步骤 3：信任工作目录
+
+为了让 hook 正常工作，需要将当前工作目录设为"可信"的。启动 Claude Code 时会弹出信任提示，选择"信任"即可。
+
+如果错过了信任提示或需要手动修改，可以编辑 `~/.claude/claude.json` 文件，找到对应工作目录的配置，将 `hasTrustDialogAccepted` 字段设置为 `true`，或者到插件目录下的 mcp 目录中，手动执行 `npm install`。
+
+### 步骤 4：重启 Claude Code
 
 重启 Claude Code 后插件即可使用。
+
+## Hook 说明
+
+本插件会自动注册一个启动 hook，在启动 Claude Code 时执行以下操作：
+
+- **自动检查 MCP 初始化**：检查 MCP 目录下的 Node.js 项目是否已完成初始化
+- **自动执行 npm install**：如果 MCP 目录中没有 `node_modules`，会自动执行 `npm install`
+- **首次自动化处理**：省去手动执行依赖安装的步骤
+
+**注意**：Hook 只有在工作目录被设为"可信"的情况下才能正常启动。如果 hook 无法运行，请检查是否已完成步骤 3 的信任设置。
 
 ## 使用方法
 

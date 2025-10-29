@@ -1,12 +1,25 @@
 {
   "name": "reminder-skill",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "具备跨平台系统通知能力的智能提醒和日历事件管理插件",
   "author": {
     "name": "LostAbaddon"
   },
   "license": "MIT",
   "keywords": ["reminder", "calendar", "notification", "scheduler"],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.js"
+          }
+        ]
+      }
+    ]
+  },
   "mcpServers": {
     "reminder-service": {
       "command": "node",
