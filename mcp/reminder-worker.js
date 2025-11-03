@@ -11,7 +11,7 @@ const { execSync } = require('child_process');
 const os = require('os');
 
 // Development mode flag
-const IS_DEV = process.env.NODE_ENV === 'development';
+const IS_DEV = true || process.env.NODE_ENV === 'development';
 
 // Platform detection
 const PLATFORM = os.platform();
@@ -31,54 +31,67 @@ const LOG_FILE = process.argv[7];
  * Log messages to file for debugging (only in development mode)
  */
 function log(level, message, data = null) {
-  if (!IS_DEV) return;
+	if (!IS_DEV) return;
 
-  const timestamp = new Date().toISOString();
-  const logMessage = data
-    ? `[${timestamp}] [${level}] ${message} ${JSON.stringify(data)}\n`
-    : `[${timestamp}] [${level}] ${message}\n`;
+	const timestamp = new Date().toISOString();
+	const logMessage = data
+		? `[${timestamp}] [${level}] ${message} ${JSON.stringify(data)}\n`
+		: `[${timestamp}] [${level}] ${message}\n`;
 
-  try {
-    fs.appendFileSync(LOG_FILE, logMessage);
-  } catch (error) {
-    console.error('Failed to write to log file:', error.message);
-  }
+	try {
+		fs.appendFileSync(LOG_FILE, logMessage);
+	} catch (error) {
+		console.error('Failed to write to log file:', error.message);
+	}
 }
 
 /**
  * Show system notification
  */
 function showNotification(title, message) {
-  log('INFO', 'Worker: Showing notification', { title, message });
-  try {
-    if (IS_MACOS) {
-      // macOS: Use alert dialog for blocking notification (more reliable)
-      const escapedTitle = title.replace(/"/g, '\\"');
-      const escapedMessage = message.replace(/"/g, '\\"');
-      const script = `display dialog "${escapedMessage}" with title "${escapedTitle}" with icon caution buttons {"好的"} default button "好的"`;
-      const cmd = `osascript -e '${script}'`;
-      log('INFO', 'Worker: Executing AppleScript alert command', { script, cmd });
-      try {
-        execSync(cmd, { stdio: 'pipe' });
-      } catch (e) {
-        // Giving up after timeout is expected, not an error
-        log('DEBUG', 'Worker: Alert execution completed or timed out (expected behavior)');
-      }
-      log('INFO', 'Worker: macOS alert displayed successfully');
-    } else if (IS_WINDOWS) {
-      // Windows: Use PowerShell for toast notification
-      const psScript = `
+	log('INFO', 'Worker: Showing notification', { title, message });
+	try {
+		if (fs.existsSync(REMINDERS_FILE)) {
+			const data = fs.readFileSync(REMINDERS_FILE, 'utf-8');
+			const reminders = JSON.parse(data);
+			log('INFO', '已有列表', reminders);
+			const has = reminders.some(r => r.id === REMINDER_ID);
+			log('INFO', 'HAS:', { id: REMINDER_ID, has });
+			if (!has) {
+				log('INFO', 'Worker: Reminder has been cancelled.', { id: REMINDER_ID });
+				return;
+			}
+		}
+
+		if (IS_MACOS) {
+			// macOS: Use alert dialog for blocking notification (more reliable)
+			const escapedTitle = title.replace(/"/g, '\\"');
+			const escapedMessage = message.replace(/"/g, '\\"');
+			const script = `display dialog "${escapedMessage}" with title "${escapedTitle}" with icon caution buttons {"好的"} default button "好的"`;
+			const cmd = `osascript -e '${script}'`;
+			log('INFO', 'Worker: Executing AppleScript alert command', { script, cmd });
+			try {
+				execSync(cmd, { stdio: 'pipe' });
+			} catch (e) {
+				// Giving up after timeout is expected, not an error
+				log('DEBUG', 'Worker: Alert execution completed or timed out (expected behavior)');
+			}
+			log('INFO', 'Worker: macOS alert displayed successfully');
+		}
+		else if (IS_WINDOWS) {
+			// Windows: Use PowerShell for toast notification
+			const psScript = `
 [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
 [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
 
 $template = @"
 <toast>
-    <visual>
-        <binding template="ToastText02">
-            <text id="1">${title.replace(/"/g, '""')}</text>
-            <text id="2">${message.replace(/"/g, '""')}</text>
-        </binding>
-    </visual>
+		<visual>
+				<binding template="ToastText02">
+						<text id="1">${title.replace(/"/g, '""')}</text>
+						<text id="2">${message.replace(/"/g, '""')}</text>
+				</binding>
+		</visual>
 </toast>
 "@
 
@@ -87,36 +100,38 @@ $xml.LoadXml($template)
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("ReminderSkill")
 $notifier.Show($toast)
-      `.trim();
+			`.trim();
 
-      execSync(`powershell -Command "${psScript.replace(/"/g, '\\"')}"`, { windowsHide: true });
-      log('INFO', 'Worker: Windows notification sent successfully');
-    } else if (IS_LINUX) {
-      // Linux: Use notify-send
-      execSync(`notify-send "${title.replace(/"/g, '\\"')}" "${message.replace(/"/g, '\\"')}" --urgency=critical`);
-      log('INFO', 'Worker: Linux notification sent successfully');
-    }
-  } catch (error) {
-    log('ERROR', 'Worker: Failed to show notification', { title, message, error: error.message });
-  }
+			execSync(`powershell -Command "${psScript.replace(/"/g, '\\"')}"`, { windowsHide: true });
+			log('INFO', 'Worker: Windows notification sent successfully');
+		}
+		else if (IS_LINUX) {
+			// Linux: Use notify-send
+			execSync(`notify-send "${title.replace(/"/g, '\\"')}" "${message.replace(/"/g, '\\"')}" --urgency=critical`);
+			log('INFO', 'Worker: Linux notification sent successfully');
+		}
+	}
+	catch (error) {
+		log('ERROR', 'Worker: Failed to show notification', { title, message, error: error.message });
+	}
 }
-
 /**
  * Remove reminder from file
  */
-function removeReminder(id) {
-  log('INFO', 'Worker: Removing reminder from file', { id });
-  try {
-    if (fs.existsSync(REMINDERS_FILE)) {
-      const data = fs.readFileSync(REMINDERS_FILE, 'utf-8');
-      const reminders = JSON.parse(data);
-      const updated = reminders.filter(r => r.id !== id);
-      fs.writeFileSync(REMINDERS_FILE, JSON.stringify(updated, null, 2));
-      log('INFO', 'Worker: Reminder removed successfully', { id, remainingCount: updated.length });
-    }
-  } catch (error) {
-    log('ERROR', 'Worker: Failed to remove reminder from file', { id, error: error.message });
-  }
+function removeReminder() {
+	log('INFO', 'Worker: Removing reminder from file', { id: REMINDER_ID });
+	try {
+		if (fs.existsSync(REMINDERS_FILE)) {
+			const data = fs.readFileSync(REMINDERS_FILE, 'utf-8');
+			const reminders = JSON.parse(data);
+			const updated = reminders.filter(r => r.id !== REMINDER_ID);
+			fs.writeFileSync(REMINDERS_FILE, JSON.stringify(updated, null, 2));
+			log('INFO', 'Worker: Reminder removed successfully', { id: REMINDER_ID, remainingCount: updated.length });
+		}
+	}
+	catch (error) {
+		log('ERROR', 'Worker: Failed to remove reminder from file', { id: REMINDER_ID, error: error.message });
+	}
 }
 
 /**
@@ -125,14 +140,14 @@ function removeReminder(id) {
 log('INFO', 'Worker: Starting', { reminderId: REMINDER_ID, delay: DELAY, title: TITLE });
 
 setTimeout(() => {
-  log('INFO', 'Worker: Delay completed, showing notification', { reminderId: REMINDER_ID });
+	log('INFO', 'Worker: Delay completed, showing notification', { reminderId: REMINDER_ID });
 
-  // Show notification
-  showNotification(TITLE, MESSAGE);
+	// Show notification
+	showNotification(TITLE, MESSAGE);
 
-  // Remove from reminders file
-  removeReminder(REMINDER_ID);
+	// Remove from reminders file
+	removeReminder(REMINDER_ID);
 
-  log('INFO', 'Worker: Reminder execution complete', { reminderId: REMINDER_ID });
-  process.exit(0);
+	log('INFO', 'Worker: Reminder execution complete', { reminderId: REMINDER_ID });
+	process.exit(0);
 }, DELAY);

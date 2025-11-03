@@ -256,7 +256,7 @@ ls -la ~/.reminder-skill-data
 
 ## 版本信息
 
-**版本**：1.0.2
+**版本**：1.1.0
 **最后更新**：2025-10-29
 **功能完整性**：稳定版本，所有核心功能已实现
 
@@ -270,7 +270,9 @@ ls -la ~/.reminder-skill-data
 - ✅ 提醒管理：支持列表和取消操作
 - ✅ MCP 工具集：三个完整的 MCP 工具（创建、列表、取消）
 - ✅ 启动 Hook 自动初始化：自动检查并初始化 MCP 依赖
+- ✅ 可以通过与 [CCCore](https://github.com/lostabaddon/CCCore) 及 [CCExtension](https://github.com/lostabaddon/CCExtension) 进行协同合作，从而 Chrome 的 Notification 来做统一的提醒通知，并能进行更加全面的提醒管理。
 
 **版本历史**：
+- v1.1.0 (2025-11-03): 完善与 CCCore 和 CCExtension 的协同合作能力
 - v1.0.2 (2025-10-29): 添加启动 hook 自动初始化 MCP 依赖，优化开发模式日志控制
 - v1.0.0 (2025-10-29): 初始版本，实现跨平台提醒系统核心功能

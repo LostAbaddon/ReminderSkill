@@ -22,7 +22,7 @@ const http = require('http');
 const DefaultTimeout = 500;
 
 // Development mode flag
-const IS_DEV = process.env.NODE_ENV === 'development';
+const IS_DEV = true || process.env.NODE_ENV === 'development';
 
 // Data directory for storing reminders
 const DATA_DIR = path.join(os.homedir(), '.reminder-skill-data');
@@ -53,10 +53,9 @@ function log(level, message, data = null) {
 }
 
 /**
- * 尝试通过 CCCore 创建提醒
- * 如果失败则返回 null，调用方应该降级到原有逻辑
+ * 通过 CCCore
  */
-async function createReminderViaCCCore(title, message, triggerTime) {
+async function createReminderRemotely(title, message, triggerTime) {
 	return new Promise((resolve) => {
 		const ccCoreHost = process.env.CCCORE_HOST || 'localhost';
 		const ccCorePort = parseInt(process.env.CCCORE_HTTP_PORT || '3579');
@@ -111,6 +110,220 @@ async function createReminderViaCCCore(title, message, triggerTime) {
 		req.write(postData);
 		req.end();
 	});
+}
+async function listReminderRemotely() {
+	// 尝试从 CCCore 获取提醒列表
+	return new Promise((resolve) => {
+		const ccCoreHost = process.env.CCCORE_HOST || 'localhost';
+		const ccCorePort = parseInt(process.env.CCCORE_HTTP_PORT || '3579');
+
+		const options = {
+			hostname: ccCoreHost,
+			port: ccCorePort,
+			path: '/api/reminders',
+			method: 'GET',
+		};
+
+		log('INFO', 'Fetching reminders from CCCore', options);
+		const req = http.request(options, (res) => {
+			let data = '';
+			res.on('data', (chunk) => {
+				data += chunk;
+			});
+			res.on('end', () => {
+				try {
+					const response = JSON.parse(data);
+					if (response?.ok && response?.data?.reminders?.length > 0) {
+						log('INFO', 'Got reminders from CCCore', { count: response.data.count });
+						const list = response.data.reminders.map(r => {
+							const triggerDate = new Date(r.triggerTime);
+							const hours = Math.floor(r.timeLeft / (60 * 60 * 1000));
+							const minutes = Math.floor((r.timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+							return `• ${r.title}\n  ID: ${r.id}\n  Message: ${r.message}\n  Time: ${triggerDate.toLocaleString()}\n  Time left: ${hours}h ${minutes}m`;
+						}).join('\n\n');
+						resolve({
+							ok: true,
+							content: [{
+								type: 'text',
+								text: `Active Reminders (${response.data.count}):\n\n${list}`,
+							}],
+						});
+					}
+					else {
+						resolve({
+							ok: true,
+							content: [{
+								type: 'text',
+								text: 'No active reminders.',
+							}],
+						});
+					}
+				}
+				catch (error) {
+					log('ERROR', 'Failed to parse CCCore response', error.message);
+					resolve({ ok:false });
+				}
+			});
+		});
+		req.on('error', (error) => {
+			log('WARN', 'Failed to fetch from CCCore', error.message);
+			resolve({ ok:false });
+		});
+		req.setTimeout(DefaultTimeout, () => {
+			req.destroy();
+			log('WARN', 'CCCore request timeout when listing reminders');
+			resolve({ ok:false });
+		});
+		req.end();
+	});
+}
+async function cancelReminderRemotely(id) {
+	return new Promise((resolve) => {
+		const ccCoreHost = process.env.CCCORE_HOST || 'localhost';
+		const ccCorePort = parseInt(process.env.CCCORE_HTTP_PORT || '3579');
+
+		const options = {
+			hostname: ccCoreHost,
+			port: ccCorePort,
+			path: `/api/reminder/${encodeURIComponent(id)}`,
+			method: 'DELETE',
+		};
+
+		log('INFO', 'Cancelling reminder via CCCore', { id });
+		const req = http.request(options, (res) => {
+			let data = '';
+			res.on('data', (chunk) => {
+				data += chunk;
+			});
+			res.on('end', () => {
+				try {
+					const response = JSON.parse(data);
+					if (response?.ok) {
+						log('INFO', 'Reminder cancelled via CCCore', { id });
+						resolve({
+							ok: true,
+							content: [{
+								type: 'text',
+								text: `✅ Reminder "${id}" cancelled successfully.`,
+							}],
+						});
+					} else {
+						resolve({
+							ok: true,
+							content: [{
+								type: 'text',
+								text: `Error: ${response?.error || 'Failed to cancel reminder'}`,
+							}],
+						});
+					}
+				} catch (error) {
+					log('ERROR', 'Failed to parse cancel response', error.message);
+					resolve({ ok: false });
+				}
+			});
+		});
+		req.on('error', (error) => {
+			log('WARN', 'Failed to cancel via CCCore', error.message);
+			resolve({ ok: false });
+		});
+		req.setTimeout(DefaultTimeout, () => {
+			req.destroy();
+			log('WARN', 'CCCore request timeout when cancelling reminder');
+			resolve({ ok: false });
+		});
+		req.end();
+	});
+}
+
+/**
+ * 本地
+ */
+function createReminderLocally(title, message, triggerTime) {
+	const now = Date.now();
+	const id = `reminder_${now}_${Math.random().toString(36).substr(2, 9)}`;
+	const reminder = {
+		id,
+		title,
+		message,
+		triggerTime,
+		created: now,
+	};
+
+	// Save to file
+	const reminders = loadReminders().filter(item => item && item.triggerTime > now);
+	reminders.push(reminder);
+	saveReminders(reminders);
+
+	// Schedule notification
+	scheduleReminder(id, title, message, triggerTime);
+
+	const triggerDate = new Date(triggerTime);
+	log('INFO', 'Reminder scheduling complete', { id });
+	return [
+		{
+			type: 'text',
+			text: `✅ Reminder created successfully!\n\nID: ${id}\nTitle: ${title}\nMessage: ${message}\nScheduled for: ${triggerDate.toLocaleString()}\n\nA system notification will appear at the scheduled time.`,
+		},
+	];
+}
+function listRemindersLocally() {
+	const now = Date.now();
+	const reminders = loadReminders();
+	const activeReminders = reminders.filter(r => r.triggerTime > now);
+	if (reminders.length > activeReminders.length) {
+		saveReminders(activeReminders);
+	}
+
+	if (activeReminders.length === 0) {
+		return {
+			content: [{
+				type: 'text',
+				text: 'No Active Reminder.'
+			}]
+		}
+	}
+
+	const list = activeReminders.map(r => {
+		const triggerDate = new Date(r.triggerTime);
+		const timeLeft = r.triggerTime - now;
+		const hours = Math.floor(timeLeft / (60 * 60 * 1000));
+		const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+
+		return `• ${r.title}\n  ID: ${r.id}\n  Message: ${r.message}\n  Time: ${triggerDate.toLocaleString()}\n  Time left: ${hours}h ${minutes}m`;
+	}).join('\n\n');
+	log('INFO', 'Listing reminders', { totalReminders: reminders.length, activeReminders: activeReminders.length });
+
+	return {
+		content: [{
+			type: 'text',
+			text: `Active Reminders (${activeReminders.length}):\n\n${list}`,
+		}],
+	};
+}
+function cancelReminderLocally(id) {
+	const now = Date.now();
+	const reminders = loadReminders().filter(item => item.triggerTime > now);
+	const filtered = reminders.filter(r => r.id !== id);
+
+	if (filtered.length === reminders.length) {
+		log('WARN', 'Reminder not found for cancellation (fallback)', { id });
+		return {
+			content: [{
+				type: 'text',
+				text: `Error: Reminder with ID "${id}" not found.`,
+			}],
+		};
+	}
+
+	saveReminders(filtered);
+	log('INFO', 'Reminder cancelled successfully (fallback)', { id, remainingReminders: filtered.length });
+
+	return {
+		content: [{
+			type: 'text',
+			text: `✅ Reminder "${id}" cancelled successfully.`,
+		}],
+	};
 }
 
 /**
@@ -242,7 +455,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		// Parse time
 		let triggerTime;
 		const relativeMatch = time.match(/^in\s+(\d+)\s+(second|seconds|minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)$/i);
-
 		if (relativeMatch) {
 			const amount = parseInt(relativeMatch[1]);
 			const unit = relativeMatch[2].toLowerCase();
@@ -270,7 +482,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 			log('INFO', 'Parsing as absolute time (ISO format)');
 			triggerTime = new Date(time).getTime();
 		}
-
 		if (isNaN(triggerTime)) {
 			log('ERROR', 'Invalid time format', { time });
 			return {
@@ -283,11 +494,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 			};
 		}
 
-		// 优先尝试通过 CCCore 创建提醒
-		const ccCoreResult = await createReminderViaCCCore(title, message, triggerTime);
-		if (ccCoreResult) {
-			if (ccCoreResult.ok && !ccCoreResult.fallback) {
-				// CCCore 成功处理
+		// 先尝试通过 CCCore 创建提醒
+		let result = await createReminderRemotely(title, message, triggerTime);
+		if (result) {
+			// CCCore 成功处理
+			if (result.ok) {
 				log('INFO', 'Reminder created via CCCore successfully');
 				const triggerDate = new Date(triggerTime);
 				return {
@@ -299,104 +510,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 					],
 				};
 			}
-			// fallback: true 或其他情况，继续使用本地逻辑
+			// 如果没有强制要求回退，则显示错误信息后再回退
+			else if (!result.fallback) {
+				log('ERROR', 'Call CCCore failed: ' + (result.error || "something wrong inside cccore."));
+			}
 		}
-
-		// 降级：使用本地存储和通知
-		const id = `reminder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-		const reminder = {
-			id,
-			title,
-			message,
-			triggerTime,
-			created: Date.now(),
-		};
-
-		// Save to file
-		const reminders = loadReminders();
-		reminders.push(reminder);
-		saveReminders(reminders);
-
-		// Schedule notification
-		scheduleReminder(id, title, message, triggerTime);
-
-		const triggerDate = new Date(triggerTime);
-		log('INFO', 'Reminder scheduling complete', { id });
+		else {
+			log('ERROR', 'CCCore missing...');
+		}
+		// CCCore 失败则使用本地
+		result = createReminderLocally(title, message, triggerTime);
 		return {
-			content: [
-				{
-					type: 'text',
-					text: `✅ Reminder created successfully!\n\nID: ${id}\nTitle: ${title}\nMessage: ${message}\nScheduled for: ${triggerDate.toLocaleString()}\n\nA system notification will appear at the scheduled time.`,
-				},
-			],
+			content: result
 		};
 	}
 
 	if (name === 'list_reminders') {
-		const reminders = loadReminders();
-
-		if (reminders.length === 0) {
-			log('INFO', 'No reminders found');
+		// 先尝试从 CCCore 获得提醒列表
+		let response = await listReminderRemotely();
+		if (response && response.ok) {
 			return {
-				content: [
-					{
-						type: 'text',
-						text: 'No active reminders.',
-					},
-				],
-			};
+				content: response.content
+			}
 		}
-
-		const now = Date.now();
-		const activeReminders = reminders.filter(r => r.triggerTime > now);
-		const list = activeReminders.map(r => {
-			const triggerDate = new Date(r.triggerTime);
-			const timeLeft = r.triggerTime - now;
-			const hours = Math.floor(timeLeft / (60 * 60 * 1000));
-			const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
-
-			return `• ${r.title}\n  ID: ${r.id}\n  Message: ${r.message}\n  Time: ${triggerDate.toLocaleString()}\n  Time left: ${hours}h ${minutes}m`;
-		}).join('\n\n');
-		log('INFO', 'Listing reminders', { totalReminders: reminders.length, activeReminders: activeReminders.length });
-
-		return {
-			content: [
-				{
-					type: 'text',
-					text: `Active Reminders (${activeReminders.length}):\n\n${list}`,
-				},
-			],
-		};
+		return listRemindersLocally();
 	}
 
 	if (name === 'cancel_reminder') {
 		const { id } = args;
-		const reminders = loadReminders();
-		const filtered = reminders.filter(r => r.id !== id);
-
-		if (filtered.length === reminders.length) {
-			log('WARN', 'Reminder not found for cancellation', { id });
+		let result = await cancelReminderRemotely(id);
+		if (result && result.ok) {
 			return {
-				content: [
-					{
-						type: 'text',
-						text: `Error: Reminder with ID "${id}" not found.`,
-					},
-				],
+				content: result.content,
 			};
 		}
-
-		saveReminders(filtered);
-		log('INFO', 'Reminder cancelled successfully', { id, remainingReminders: filtered.length });
-
-		return {
-			content: [
-				{
-					type: 'text',
-					text: `✅ Reminder "${id}" cancelled successfully.`,
-				},
-			],
-		};
+		return cancelReminderLocally(id);
 	}
 
 	return {
