@@ -520,6 +520,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		}
 		// CCCore 失败则使用本地
 		result = createReminderLocally(title, message, triggerTime);
+		log('INFO', 'Reminder created locally');
 		return {
 			content: result
 		};
