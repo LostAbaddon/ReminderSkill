@@ -1,6 +1,6 @@
 {
   "name": "reminder-skill",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "具备跨平台系统通知能力的智能提醒和日历事件管理插件",
   "author": {
     "name": "LostAbaddon",
