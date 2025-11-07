@@ -22,7 +22,7 @@ const http = require('http');
 const DefaultTimeout = 500;
 
 // Development mode flag
-const IS_DEV = true || process.env.NODE_ENV === 'development';
+const IS_DEV = process.env.NODE_ENV === 'development';
 
 // Data directory for storing reminders
 const DATA_DIR = path.join(os.homedir(), '.reminder-skill-data');
